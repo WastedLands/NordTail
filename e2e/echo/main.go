@@ -11,6 +11,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -47,10 +48,17 @@ func emit(e event) {
 func main() {
 	httpAddr := flag.String("http", ":80", "HTTP listen address")
 	dnsAddr := flag.String("dns", ":53", "DNS (UDP) listen address")
-	answerV4 := flag.String("answer", "", "IPv4 address returned for every A query (default: the address the query arrived on)")
+	answerV4 := flag.String("answer", "", "IPv4 address returned for A queries without a -host entry")
+	hosts := hostMap{}
+	flag.Var(hosts, "host", "name=IPv4 answered for that name (repeatable), e.g. headscale=203.0.113.10")
 	flag.Parse()
 
-	go serveDNS(*dnsAddr, *answerV4)
+	if *dnsAddr != "" {
+		go serveDNS(*dnsAddr, *answerV4, hosts)
+	}
+	if *httpAddr == "" {
+		select {}
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -105,10 +113,25 @@ func hostOnly(addr string) string {
 	return addr
 }
 
+// hostMap is a repeatable name=IPv4 flag.
+type hostMap map[string]netip.Addr
+
+func (h hostMap) String() string { return fmt.Sprint(map[string]netip.Addr(h)) }
+
+func (h hostMap) Set(v string) error {
+	name, ip, ok := strings.Cut(v, "=")
+	a, err := netip.ParseAddr(ip)
+	if !ok || err != nil || !a.Is4() {
+		return fmt.Errorf("want name=IPv4, got %q", v)
+	}
+	h[strings.ToLower(strings.TrimSuffix(name, "."))] = a
+	return nil
+}
+
 // serveDNS answers every query: TXT with the querying source address, A with
-// a fixed address (or the local address the query arrived on), AAAA with
-// nothing. It is deliberately not a real resolver.
-func serveDNS(addr, answerV4 string) {
+// the -host entry for the name or else a fixed address, AAAA with nothing.
+// It is deliberately not a real resolver.
+func serveDNS(addr, answerV4 string, hosts hostMap) {
 	pc, err := net.ListenPacket("udp", addr)
 	if err != nil {
 		log.Fatalf("dns listen: %v", err)
@@ -124,7 +147,7 @@ func serveDNS(addr, answerV4 string) {
 			log.Printf("dns read: %v", err)
 			continue
 		}
-		resp, q, ok := answer(buf[:n], hostOnly(raddr.String()), fixed)
+		resp, q, ok := answer(buf[:n], hostOnly(raddr.String()), fixed, hosts)
 		if q != nil {
 			emit(event{Proto: "dns", Src: hostOnly(raddr.String()), QName: strings.TrimSuffix(q.Name.String(), "."), QType: q.Type.String()})
 		}
@@ -134,7 +157,7 @@ func serveDNS(addr, answerV4 string) {
 	}
 }
 
-func answer(req []byte, src string, fixed netip.Addr) ([]byte, *dnsmessage.Question, bool) {
+func answer(req []byte, src string, fixed netip.Addr, hosts hostMap) ([]byte, *dnsmessage.Question, bool) {
 	var p dnsmessage.Parser
 	h, err := p.Start(req)
 	if err != nil {
@@ -155,6 +178,9 @@ func answer(req []byte, src string, fixed netip.Addr) ([]byte, *dnsmessage.Quest
 		_ = b.TXTResource(rh, dnsmessage.TXTResource{TXT: []string{src}})
 	case dnsmessage.TypeA:
 		a := fixed
+		if h, ok := hosts[strings.ToLower(strings.TrimSuffix(q.Name.String(), "."))]; ok {
+			a = h
+		}
 		if !a.IsValid() {
 			a = netip.MustParseAddr("192.0.2.1")
 		}

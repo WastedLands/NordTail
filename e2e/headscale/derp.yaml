@@ -1,15 +1,17 @@
-# Headscale refuses to start with an empty DERP map. This placeholder region
-# points at TEST-NET-1 (unroutable), so nodes never relay: every connection in
-# the harness must be direct, which is what the E2E checks want to see anyway.
+# The harness relay (service "derp"): Tailscale's derper with a self-signed
+# certificate for its IP, hence InsecureForTests. It provides STUN for
+# endpoint discovery and a relay for disco coordination, like Tailscale's
+# public DERP servers do in production.
 regions:
   900:
     regionid: 900
-    regioncode: none
-    regionname: Placeholder (unreachable)
+    regioncode: harness
+    regionname: Harness relay
     nodes:
       - name: 900a
         regionid: 900
-        hostname: derp.invalid
-        ipv4: 192.0.2.1
-        stunport: -1
+        hostname: 203.0.113.11
+        ipv4: 203.0.113.11
         derpport: 443
+        stunport: 3478
+        insecurefortests: true

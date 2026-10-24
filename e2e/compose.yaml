@@ -26,9 +26,20 @@ services:
     networks:
       wan: {ipv4_address: 203.0.113.10}
 
+  # Relay + STUN. Separate from echo: echo's address is the region's
+  # resolver, which NordTail routes only through the tunnel.
+  derp:
+    build: {context: .., dockerfile: e2e/images/derper/Dockerfile}
+    command: ["-a", ":443", "-http-port", "-1", "-certmode", "manual", "-certdir", "/tmp/certs",
+              "-hostname", "203.0.113.11", "-stun", "-stun-port", "3478"]
+    networks:
+      wan: {ipv4_address: 203.0.113.11}
+
   echo:
     build: {context: .., dockerfile: e2e/images/echo/Dockerfile}
-    command: ["-answer", "203.0.113.20"]
+    # The region resolves through the tunnel to this service, so it must
+    # also answer the harness's real names.
+    command: ["-answer", "203.0.113.20", "-host", "headscale=203.0.113.10"]
     networks:
       wan: {ipv4_address: 203.0.113.20, ipv6_address: "2001:db8:30::20"}
 

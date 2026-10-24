@@ -52,8 +52,8 @@ func TestDashboardAuthz(t *testing.T) {
 
 func TestListeners(t *testing.T) {
 	// Container netns: no TCP listener reachable from the host network.
-	outer, err := run("docker", "run", "--rm", "--net", "container:"+project+"-nordtail-1", project+"-client",
-		"ss", "-Htln")
+	outer, err := run("docker", "run", "--rm", "--net", "container:"+project+"-nordtail-1", "--entrypoint", "ss",
+		project+"-client", "-Htln")
 	var bad []string
 	for _, l := range listenAddrs(outer) {
 		if !loopback(l) {
@@ -81,12 +81,13 @@ func TestRestartIdentity(t *testing.T) {
 		t.Fatalf("restart: %v\n%s", err, out)
 	}
 	rerr := waitFor(120*time.Second, regionReady)
+	derr := warmPaths() // direct paths must come back, not just relayed ones
 	after, err := exitNode(t)
 	dupes := countNodes(t, regionHost)
-	ok := rerr == nil && err == nil && before.ID == after.ID && before.GivenName == after.GivenName &&
+	ok := rerr == nil && derr == nil && err == nil && before.ID == after.ID && before.GivenName == after.GivenName &&
 		slices.Equal(before.IPs, after.IPs) && dupes == 1
-	check(t, "restart_identity", []int{6}, fmt.Sprintf("%+v, 1 node named %s", before, regionHost),
-		fmt.Sprintf("%+v, %d nodes", after, dupes), ok, errDetail(rerr))
+	check(t, "restart_identity", []int{6}, fmt.Sprintf("%+v, 1 node named %s, direct paths back", before, regionHost),
+		fmt.Sprintf("%+v, %d nodes", after, dupes), ok, errDetail(rerr)+errDetail(derr))
 }
 
 func TestLeakTunnelDown(t *testing.T) {
@@ -120,7 +121,16 @@ func TestLeakTunnelDown(t *testing.T) {
 		_, cerr2 := clientExec("curl", "-sS", "-m", "8", "http://"+addrEcho+"/"+n2)
 		srcs2 := echoSources(t, n2)
 		restoreFakeVPN(t)
-		after, aerr := exitNode(t)
+		// Traffic flows again at this point; give the coordination server's
+		// presence flag a moment to catch up rather than sampling it once.
+		var after hsNode
+		aerr := waitFor(30*time.Second, func() error {
+			var err error
+			if after, err = exitNode(t); err == nil && !after.Online {
+				err = fmt.Errorf("not online yet: %+v", after)
+			}
+			return err
+		})
 		ok := werr == nil && cerr2 != nil && len(srcs2) == 0 && aerr == nil && after.Online && after.ID == before.ID
 		check(t, "withdraw_offline", []int{12}, "offline after grace, client blocked, same node back online",
 			fmt.Sprintf("went_offline=%v curl_err=%v echo_sources=%v back=%+v", werr == nil, cerr2 != nil, srcs2, after),
@@ -156,11 +166,13 @@ func useExitNode(t *testing.T) {
 	}
 }
 
-// regionExec runs a command inside the region netns of the NordTail container
-// (iproute2-style /var/run/netns/rg-<id>, entered through PID 1's mount ns).
+// regionExec runs a command (from the test image) inside the region netns of
+// the NordTail container, reaching the bind-mounted namespace file
+// /run/netns/rg-<id> through the container's PID 1 root.
 func regionExec(args ...string) (string, error) {
-	base := []string{"run", "--rm", "--privileged", "--pid", "container:" + project + "-nordtail-1", project + "-client",
-		"nsenter", "-t", "1", "-m", "-n", "--", "ip", "netns", "exec", "rg-" + regionID}
+	base := []string{"run", "--rm", "--privileged", "--pid", "container:" + project + "-nordtail-1",
+		"--entrypoint", "nsenter", project + "-client",
+		"--net=/proc/1/root/run/netns/rg-" + regionID, "--"}
 	return run("docker", append(base, args...)...)
 }
 
@@ -186,6 +198,9 @@ func restoreNordTail(t *testing.T) {
 		t.Fatalf("restart nordtail: %v\n%s", err, out)
 	}
 	if err := waitFor(120*time.Second, regionReady); err != nil {
+		t.Fatal(err)
+	}
+	if err := warmPaths(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -300,7 +315,12 @@ func listenAddrs(ss string) []string {
 	return as
 }
 
+// loopback reports loopback addresses, including wildcard sockets bound to
+// the lo device ("0.0.0.0%lo"), which nothing outside the netns can reach.
 func loopback(a string) bool {
+	if addr, dev, ok := strings.Cut(a, "%"); ok {
+		return dev == "lo" || loopback(addr)
+	}
 	return strings.HasPrefix(a, "127.") || a == "::1"
 }
 

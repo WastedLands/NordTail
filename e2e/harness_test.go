@@ -107,7 +107,7 @@ func setup() error {
 	}
 
 	_, _ = compose("--profile", "nordtail", "down", "-v", "--remove-orphans")
-	if out, err := compose("up", "-d", "--build", "headscale", "echo", "fakevpn", "client", "outsider"); err != nil {
+	if out, err := compose("up", "-d", "--build", "headscale", "derp", "echo", "fakevpn", "client", "outsider"); err != nil {
 		return fmt.Errorf("compose up infra: %v\n%s", err, out)
 	}
 	if err := waitFor(30*time.Second, func() error {
@@ -165,7 +165,22 @@ func setup() error {
 	if err := waitFor(90*time.Second, regionReady); err != nil {
 		return fmt.Errorf("region %s never became ready: %w", regionID, err)
 	}
+	if err := warmPaths(); err != nil {
+		return err
+	}
 	env = h
+	return nil
+}
+
+// warmPaths establishes direct paths from the client to the dashboard and the
+// exit node. The harness has no relay, so the first packets to a peer can
+// stall until disco finds the direct path.
+func warmPaths() error {
+	for _, peer := range []string{"nordtail", regionHost} {
+		if out, err := clientExec("tailscale", "ping", "-c", "20", "--until-direct", peer); err != nil {
+			return fmt.Errorf("no direct path to %s: %v\n%s", peer, err, out)
+		}
+	}
 	return nil
 }
 
