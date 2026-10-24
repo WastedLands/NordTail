@@ -1,0 +1,61 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove keys, tokens, and auth keys from anything you paste. Security issues go through private vulnerability reporting, not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: NordTail version or image tag
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host type
+      options:
+        - Homelab bare metal
+        - Homelab VM (KVM/Proxmox/other)
+        - Cloud VPS
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Architecture, kernel, and Docker version
+      placeholder: "arm64, 6.8.0-45-generic, Docker 27.3"
+  - type: dropdown
+    id: provider
+    attributes:
+      label: VPN provider
+      options:
+        - NordVPN
+        - Generic WireGuard
+    validations:
+      required: true
+  - type: dropdown
+    id: control
+    attributes:
+      label: Coordination server
+      options:
+        - Tailscale SaaS
+        - Headscale
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant NordTail logs. Redact anything secret.
+      render: text

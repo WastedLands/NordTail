@@ -1,0 +1,37 @@
+# Common
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Agent harness state and local planning: never part of the public repo
+.planning/
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.agents/
+.codex/
+.mcp.json
+
+# Go
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+go.work
+go.work.sum
+
+# Local runtime data from dev runs (SQLite state, tailscaled state, keys)
+/data/

@@ -1,0 +1,26 @@
+# GitHub-owned actions only, pinned to full commit SHAs. No third-party actions,
+# no pull_request_target. Go lint/test/E2E jobs are added with the first code.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: No unfilled placeholders
+        # Exit 0 when clean; exit 1 on placeholders or scan failure.
+        # grep exit 1 = no matches. Any other non-zero grep exit is a scan
+        # failure and must propagate.
+        run: |
+          if grep -rEn --include='*.md' --exclude-dir=.git '[{][{]' .; then
+            echo "Unfilled template placeholders found" >&2; exit 1
+          else
+            code=$?; [ "$code" -eq 1 ] || { echo "Placeholder scan failed (grep exit $code)" >&2; exit 1; }
+          fi
