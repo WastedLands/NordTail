@@ -11,7 +11,27 @@ Thanks for your interest. NordTail is pre-alpha. The design is still moving, so 
 
 ## Development setup
 
-Build, lint, and test commands will be documented here once the first code lands.
+You need Linux, Go (the version in `go.mod`), and Docker with Compose. The end-to-end suite runs privileged containers.
+
+```bash
+gofmt -l .                       # must print nothing
+go vet ./... && go vet -tags e2e ./e2e
+go test -count=1 ./...           # unit and integration tests: no network, no credentials
+make e2e                         # hermetic end-to-end suite (about 4 minutes)
+make e2e-keep                    # same, but leave the environment running for debugging
+docker build -t nordtail:dev .   # container image
+```
+
+`make e2e` runs everything in Docker Compose (`e2e/compose.yaml`):
+
+- **Headscale**, a test-only coordination server
+- **Tailscale's `derper`**, as relay and STUN server
+- **a WireGuard "fake VPN"**
+- **an echo service** standing in for the internet: it reports the source address of every request
+- **two tailnet clients**
+- **NordTail** itself
+
+The suite checks where traffic and DNS actually come out, including with the tunnel down, and writes `e2e/out/report.json`. It needs no accounts or secrets. Read [docs/architecture.md](docs/architecture.md) before changing routing, the firewall, or the dashboard boundary.
 
 ## Commits
 
