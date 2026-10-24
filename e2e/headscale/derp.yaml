@@ -1,0 +1,17 @@
+# The harness relay (service "derp"): Tailscale's derper with a self-signed
+# certificate for its IP, hence InsecureForTests. It provides STUN for
+# endpoint discovery and a relay for disco coordination, like Tailscale's
+# public DERP servers do in production.
+regions:
+  900:
+    regionid: 900
+    regioncode: harness
+    regionname: Harness relay
+    nodes:
+      - name: 900a
+        regionid: 900
+        hostname: 203.0.113.11
+        ipv4: 203.0.113.11
+        derpport: 443
+        stunport: 3478
+        insecurefortests: true

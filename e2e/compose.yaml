@@ -1,0 +1,80 @@
+# Hermetic E2E harness. Driven by `go test -tags e2e ./e2e` (see Makefile `e2e`),
+# which generates keys into out/ before `up`. Fixed addresses make every
+# observed source address meaningful:
+#   203.0.113.30 fake VPN egress (tunneled: pass)
+#   203.0.113.50 NordTail container (leak: fail)
+#   203.0.113.40 test client (bypassed the exit node: fail)
+#   203.0.113.41 second tailnet user, not a NordTail admin
+name: nordtail-e2e
+
+networks:
+  wan:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 203.0.113.0/24
+        - subnet: 2001:db8:30::/64
+
+services:
+  headscale:
+    image: headscale/headscale:v0.29.5@sha256:780ed2f9e85719a2211277433f2c8afb45105d0d25031949a6848a485f9e216d
+    command: ["serve"]
+    volumes:
+      - ./headscale/config.yaml:/etc/headscale/config.yaml:ro
+      - ./headscale/policy.hujson:/etc/headscale/policy.hujson:ro
+      - ./headscale/derp.yaml:/etc/headscale/derp.yaml:ro
+    networks:
+      wan: {ipv4_address: 203.0.113.10}
+
+  # Relay + STUN. Separate from echo: echo's address is the region's
+  # resolver, which NordTail routes only through the tunnel.
+  derp:
+    build: {context: .., dockerfile: e2e/images/derper/Dockerfile}
+    command: ["-a", ":443", "-http-port", "-1", "-certmode", "manual", "-certdir", "/tmp/certs",
+              "-hostname", "203.0.113.11", "-stun", "-stun-port", "3478"]
+    networks:
+      wan: {ipv4_address: 203.0.113.11}
+
+  echo:
+    build: {context: .., dockerfile: e2e/images/echo/Dockerfile}
+    # The region resolves through the tunnel to this service, so it must
+    # also answer the harness's real names.
+    command: ["-answer", "203.0.113.20", "-host", "headscale=203.0.113.10"]
+    networks:
+      wan: {ipv4_address: 203.0.113.20, ipv6_address: "2001:db8:30::20"}
+
+  fakevpn:
+    build: {context: .., dockerfile: e2e/images/fakevpn/Dockerfile}
+    privileged: true
+    env_file: [out/fakevpn.env]
+    networks:
+      wan: {ipv4_address: 203.0.113.30}
+
+  client:
+    build: {context: .., dockerfile: e2e/images/testnode/Dockerfile}
+    privileged: true
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "0"
+    networks:
+      wan: {ipv4_address: 203.0.113.40, ipv6_address: "2001:db8:30::40"}
+
+  # Second tailnet user, not on NordTail's admin allowlist.
+  outsider:
+    build: {context: .., dockerfile: e2e/images/testnode/Dockerfile}
+    privileged: true
+    networks:
+      wan: {ipv4_address: 203.0.113.41}
+
+  nordtail:
+    profiles: [nordtail]
+    image: ${NORDTAIL_IMAGE:-nordtail:e2e}
+    build: {context: .., dockerfile: Dockerfile}
+    privileged: true
+    env_file: [out/nordtail.env]
+    volumes:
+      - nordtail-data:/data
+    networks:
+      wan: {ipv4_address: 203.0.113.50}
+
+volumes:
+  nordtail-data:

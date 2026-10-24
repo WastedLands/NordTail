@@ -1,0 +1,6 @@
+.git
+.planning
+.env
+.env.*
+e2e/out
+*.md
