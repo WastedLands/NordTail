@@ -100,6 +100,7 @@ func TestLeakTunnelDown(t *testing.T) {
 		_, cerr := clientExec("curl", "-sS", "-m", "8", "http://"+addrEcho+"/"+n)
 		_, _ = clientExec("dig", "+short", "+time=3", "+tries=1", "@100.100.100.100", "TXT", n+".whoami.test")
 		srcs := append(echoSources(t, n), echoDNSSources(t, n)...)
+		// The VPN is gone, so nothing can arrive through it either.
 		check(t, "leak_tunnel_down", []int{2}, "request fails, echo sees nothing",
 			fmt.Sprintf("curl_err=%v echo_sources=%v", cerr != nil, srcs), cerr != nil && len(srcs) == 0, "")
 
@@ -137,10 +138,12 @@ func TestLeakTunnelDown(t *testing.T) {
 		took := time.Since(start).Round(100 * time.Millisecond)
 		dns, _ := clientExec("dig", "+short", "+time=3", "+tries=1", "@100.100.100.100", "TXT", n+".whoami.test")
 		srcs := append(echoSources(t, n), echoDNSSources(t, n)...)
-		check(t, "leak_link_down", []int{2}, "request fails, echo sees nothing",
-			fmt.Sprintf("curl_err=%v took=%s echo_sources=%v", cerr != nil, took, srcs), cerr != nil && len(srcs) == 0, "")
-		check(t, "dns_link_down", []int{3}, "no answer, no query reaches echo",
-			fmt.Sprintf("answer=%q", dns), !strings.Contains(dns, `"`), "")
+		// A controller may repair the link quickly, so tunneled arrivals are
+		// fine; any other source is a leak.
+		check(t, "leak_link_down", []int{2}, "nothing reaches echo except via the VPN",
+			fmt.Sprintf("curl_err=%v took=%s echo_sources=%v", cerr != nil, took, srcs), onlyFrom(srcs, addrVPN), "")
+		check(t, "dns_link_down", []int{3}, "no answer except via the VPN",
+			fmt.Sprintf("answer=%q", dns), dns == "" || strings.Contains(dns, `"`+addrVPN+`"`), "")
 	})
 }
 
@@ -310,6 +313,16 @@ func tailnetAddr(a string) bool {
 		return b1 == 100 && b2 >= 64 && b2 <= 127
 	}
 	return false
+}
+
+// onlyFrom reports whether every source is want (vacuously true when empty).
+func onlyFrom(ss []string, want string) bool {
+	for _, s := range ss {
+		if s != want {
+			return false
+		}
+	}
+	return true
 }
 
 func allEqual(ss []string, want string) bool {
