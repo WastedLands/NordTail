@@ -1,0 +1,15 @@
+# Headscale refuses to start with an empty DERP map. This placeholder region
+# points at TEST-NET-1 (unroutable), so nodes never relay: every connection in
+# the harness must be direct, which is what the E2E checks want to see anyway.
+regions:
+  900:
+    regionid: 900
+    regioncode: none
+    regionname: Placeholder (unreachable)
+    nodes:
+      - name: 900a
+        regionid: 900
+        hostname: derp.invalid
+        ipv4: 192.0.2.1
+        stunport: -1
+        derpport: 443

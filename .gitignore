@@ -35,3 +35,6 @@ go.work.sum
 
 # Local runtime data from dev runs (SQLite state, tailscaled state, keys)
 /data/
+
+# E2E harness output (generated keys, env files, report)
+/e2e/out/

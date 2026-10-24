@@ -1,0 +1,14 @@
+// Test tailnet: the admin user owns tag:nordtail, NordTail exit nodes are
+// auto-approved, and every node may reach every node and the internet.
+{
+    "tagOwners": {
+        "tag:nordtail": ["admin@"],
+    },
+    "autoApprovers": {
+        "exitNode": ["tag:nordtail"],
+    },
+    "acls": [
+        {"action": "accept", "src": ["*"], "dst": ["*:*"]},
+        {"action": "accept", "src": ["*"], "dst": ["autogroup:internet:*"]},
+    ],
+}
