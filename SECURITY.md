@@ -6,7 +6,7 @@ NordTail handles VPN credentials, Tailscale credentials, and the routing of all 
 
 ## Guarantees
 
-1. **Fail closed, including DNS.** Traffic and DNS queries from exit-node clients leave only through the VPN tunnel. If the tunnel is down, that traffic is dropped, never sent out the host's own connection. Every release is gated on automated tests that take the tunnel down and check for leaks.
+1. **Fail closed, including DNS.** Traffic from exit-node clients leaves only through the VPN tunnel. If the tunnel is down, that traffic is dropped, never sent out the host's own connection. DNS queries that reach an exit node go to the resolver configured for that region: by default your VPN provider's DNS, through the tunnel. If that resolver can't be reached, the query fails; it never silently falls back to another resolver or path. Every release is gated on automated tests that take the tunnel down and check for leaks.
 2. **Plain-exit-node parity.** Tailscale's own connection traffic never goes through the VPN tunnel. An exit node performs like a plain Tailscale exit node on the same host, plus one VPN hop.
 3. **Secrets stay secret.** VPN keys, Tailscale auth keys, and OAuth client secrets can be entered but are never shown back, written to logs, or returned by any API. They are encrypted at rest with a master key you provide. NordTail itself collects no telemetry and has no analytics or phone-home of its own. The third-party components it runs keep their own default behavior, which is outside NordTail's control: for example, `tailscaled` uploads its logs to Tailscale unless configured otherwise. Your VPN provider and Tailscale log according to their own policies.
 4. **Tailnet-only, policy hands-off.** The dashboard has no public listener. Every request is checked against the caller's Tailscale identity. NordTail never edits your Tailscale access policy. It shows you policy snippets to paste yourself.
@@ -16,6 +16,7 @@ NordTail handles VPN credentials, Tailscale credentials, and the routing of all 
 - **A compromised host.** The container is privileged. Anyone with root on the host can read every secret and all traffic, encrypted or not. Encryption at rest protects copies of the data volume, such as backups and snapshots, not a running host.
 - **Your VPN provider or Tailscale.** You trust both, just as you would without NordTail.
 - **Lost master key.** If you lose the master key, the stored secrets can't be recovered. Enter them again.
+- **Your tailnet's DNS settings.** If your tailnet sets global nameservers, your devices send DNS there even while using an exit node, so those queries never reach NordTail. NordTail can't change this. The dashboard warns you when it applies.
 - **Policy you control.** Who in your tailnet may use an exit node or reach the dashboard is decided by your Tailscale access policy, plus NordTail's admin allowlist for the dashboard.
 
 ## Reporting a vulnerability
