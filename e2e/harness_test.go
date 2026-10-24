@@ -36,6 +36,9 @@ const (
 	regionHost = "exit-test"
 	dashboard  = "http://nordtail.e2e.test"
 	loginURL   = "http://headscale:8080"
+
+	// Short tunnel-down grace period so the withdrawal check runs quickly.
+	downGrace = 5 * time.Second
 )
 
 var (
@@ -141,6 +144,7 @@ func setup() error {
 		"NORDTAIL_MASTER_KEY":   base64.StdEncoding.EncodeToString(masterKey),
 		"NORDTAIL_TS_AUTHKEY":   h.tagKey,
 		"NORDTAIL_LOGIN_SERVER": loginURL,
+		"NORDTAIL_DOWN_GRACE":   downGrace.String(),
 		"NORDTAIL_ADMINS":       "admin", // Headscale users appear in WhoIs by bare name
 	}); err != nil {
 		return err

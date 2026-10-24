@@ -102,6 +102,28 @@ func TestLeakTunnelDown(t *testing.T) {
 		srcs := append(echoSources(t, n), echoDNSSources(t, n)...)
 		check(t, "leak_tunnel_down", []int{2}, "request fails, echo sees nothing",
 			fmt.Sprintf("curl_err=%v echo_sources=%v", cerr != nil, srcs), cerr != nil && len(srcs) == 0, "")
+
+		// Past the grace period the node goes offline (decision 0004). The
+		// client must stay blocked rather than fall back to its own uplink.
+		before, err := exitNode(t)
+		if err != nil {
+			t.Fatal(err)
+		}
+		werr := waitFor(downGrace+30*time.Second, func() error {
+			if n, err := exitNode(t); err != nil || n.Online {
+				return fmt.Errorf("still online: %+v %v", n, err)
+			}
+			return nil
+		})
+		n2 := nonce("withdrawn")
+		_, cerr2 := clientExec("curl", "-sS", "-m", "8", "http://"+addrEcho+"/"+n2)
+		srcs2 := echoSources(t, n2)
+		restoreFakeVPN(t)
+		after, aerr := exitNode(t)
+		ok := werr == nil && cerr2 != nil && len(srcs2) == 0 && aerr == nil && after.Online && after.ID == before.ID
+		check(t, "withdraw_offline", []int{12}, "offline after grace, client blocked, same node back online",
+			fmt.Sprintf("went_offline=%v curl_err=%v echo_sources=%v back=%+v", werr == nil, cerr2 != nil, srcs2, after),
+			ok, errDetail(werr)+errDetail(aerr))
 	})
 	t.Run("wg_link_down", func(t *testing.T) {
 		useExitNode(t)
@@ -214,6 +236,7 @@ type hsNode struct {
 	ID        uint64
 	GivenName string
 	IPs       []string
+	Online    bool
 }
 
 func headscaleNodes(t *testing.T) []hsNode {
@@ -226,13 +249,14 @@ func headscaleNodes(t *testing.T) []hsNode {
 		ID          uint64   `json:"id"`
 		GivenName   string   `json:"given_name"`
 		IPAddresses []string `json:"ip_addresses"`
+		Online      bool     `json:"online"`
 	}
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {
 		t.Fatalf("nodes JSON: %v", err)
 	}
 	var ns []hsNode
 	for _, r := range raw {
-		ns = append(ns, hsNode{ID: r.ID, GivenName: r.GivenName, IPs: r.IPAddresses})
+		ns = append(ns, hsNode{ID: r.ID, GivenName: r.GivenName, IPs: r.IPAddresses, Online: r.Online})
 	}
 	return ns
 }
